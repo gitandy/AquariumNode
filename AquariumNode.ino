@@ -4,6 +4,12 @@
 #include <JeeLib.h>
 #include <Ports.h>
 
+#ifndef ANALOG_TEMP
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#define ONE_WIRE_BUS 6
+#endif
+
 #define RF12_GRP_ID 1
 #define RF12_SRC_ID 2
 
@@ -19,23 +25,37 @@ float esum = 0.0;
 int rate = 0;
 unsigned long spd = 0;
 
+#ifndef ANALOG_TEMP
+OneWire oneWire(ONE_WIRE_BUS);
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
+#endif
+
 void setup () {
     Serial.begin(57600);
-    Serial.println("\n[AquariumNode 0.0]");
+    Serial.println("\n[aquarium_node 0.1]");
 
     rf12_initialize(RF12_SRC_ID, RF12_868MHZ, RF12_GRP_ID);
         
     pinMode(3, OUTPUT);
     TCCR2B = TCCR2B & 0b11111000 | 0x01; //We need 25kHz (32kHz also works fine)
     analogWrite(3, 200);   //Initially value for fan pwm
-
-    //analogReadResolution(12);
     
+#ifdef ANALOG_TEMP
     pinMode(7, INPUT);
+#else
+    sensors.begin();
+#endif
 }
 
 float piControl() {
+#ifdef ANALOG_TEMP
     temp_pv = analogRead(A3) * 0.03;
+#else
+    sensors.requestTemperatures();
+    temp_pv = sensors.getTempCByIndex(0);
+#endif
+
     float e = temp_sp - temp_pv;
   
     esum = esum + e;
@@ -76,8 +96,8 @@ void loop () {
       rate = -piControl();
       
       //Limit and set rate for fan
-      if(rate < 75) 
-        rate = 75;
+      if(rate < 65) 
+        rate = 65;
       if(rate > 255)
         rate = 255;
 
@@ -101,10 +121,8 @@ void loop () {
     if(rf_upd.poll(5000)) {
       uint8_t mess[3] = {(uint8_t)(temp_sp*5), 
                          (uint8_t)(temp_pv*5),
-                         (uint8_t)(spd/100)};
-      
-      rf12_recvDone();
-      while(!rf12_canSend());       
-      rf12_sendStart(RF12_SRC_ID, mess, sizeof mess);
+                         (uint8_t)(255 - (spd/100))};
+            
+      rf12_sendNow(RF12_SRC_ID, mess, sizeof mess);
     }
 }
