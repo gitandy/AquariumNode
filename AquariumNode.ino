@@ -23,7 +23,7 @@ MilliTimer update;
 MilliTimer rf_upd;
 float esum = 0.0;
 int rate = 0;
-unsigned long spd = 0;
+unsigned int spd = 0;
 
 #ifndef ANALOG_TEMP
 OneWire oneWire(ONE_WIRE_BUS);
@@ -31,9 +31,15 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 #endif
 
+struct {
+  uint8_t temp_sp; //Temperature set point
+  float temp_pv; //Temperature current (process) value
+  uint16_t fan_spd; //Fan speed RPM
+} payload;
+
 void setup () {
     Serial.begin(57600);
-    Serial.println("\n[AquariumNode 0.2]");
+    Serial.println("\n[AquariumNode 0.3]");
 
     rf12_initialize(RF12_SRC_ID, RF12_868MHZ, RF12_GRP_ID);
         
@@ -46,7 +52,7 @@ void setup () {
     int e_Kp = EEPROM.read(0x01);
     int e_Ki = EEPROM.read(0x02);
     int e_cs = EEPROM.read(0x03);
-     
+
     if((e_temp_sp ^ e_Kp ^ e_Ki) == e_cs) {
       Serial.println("Use settings from EEPROM");
       temp_sp = e_temp_sp / 5.0;
@@ -54,6 +60,8 @@ void setup () {
       Ki = e_Ki / 100.0;
     }     
     
+    payload.temp_sp = (uint8_t)(temp_sp * 5);
+
 #ifdef ANALOG_TEMP
     pinMode(7, INPUT);
 #else
@@ -69,6 +77,8 @@ float piControl() {
     temp_pv = sensors.getTempCByIndex(0);
 #endif
 
+    payload.temp_pv = temp_pv;
+
     float e = temp_sp - temp_pv;
   
     esum = esum + e;
@@ -83,7 +93,9 @@ float piControl() {
 void recvSettings(){
     if(rf12_recvDone() && rf12_crc == 0) {       
        if(rf12_len == 3) {
-         temp_sp = ((float)rf12_data[0]) / 5.0; 
+         temp_sp = ((float)rf12_data[0]) / 5.0;
+         payload.temp_sp = rf12_data[0];
+         
          Kp = (float)rf12_data[1] / 100.0;
          Ki = (float)rf12_data[2] / 100.0;
          
@@ -120,8 +132,8 @@ void loop () {
       rate = -piControl() * 100;
       
       //Limit and set rate for fan
-      if(rate < 65) 
-        rate = 65;
+      if(rate < 75) 
+        rate = 75;
       if(rate > 255)
         rate = 255;
 
@@ -129,6 +141,9 @@ void loop () {
       
       //Get fan speed
       spd = pulseIn(7,HIGH);
+      
+      payload.fan_spd = (uint16_t)(12000000/spd);
+
       
 #ifdef DEBUG
       Serial.print("Tsp:");
@@ -142,11 +157,7 @@ void loop () {
 #endif              
     }
     
-    if(rf_upd.poll(5000)) {
-      uint8_t mess[3] = {(uint8_t)(temp_sp*5), 
-                         (uint8_t)(temp_pv*5),
-                         (uint8_t)(255 - (spd/100))};
-            
-      rf12_sendNow(RF12_SRC_ID, mess, sizeof mess);
+    if(rf_upd.poll(2000)) {      
+      rf12_sendNow(RF12_SRC_ID, &payload, sizeof payload);
     }
 }
