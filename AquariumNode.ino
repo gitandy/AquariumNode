@@ -1,6 +1,6 @@
-//fan_control
+//AquariumNode
 //To control aquarium temperature
-
+#include <EEPROM.h>
 #include <JeeLib.h>
 #include <Ports.h>
 
@@ -15,8 +15,8 @@
 
 float temp_pv = 25.0; //Temperature current (process) value
 float temp_sp = 25.0; //Temperature set point
-float Kp = 10.0;      //Proportinal gain
-float Ki = 10.0;      //Integral gain
+float Kp = 1;      //Proportinal gain
+float Ki = 1;      //Integral gain
 float Ta = 1;         //Intervall in seconds
 
 MilliTimer update;
@@ -33,13 +33,26 @@ DallasTemperature sensors(&oneWire);
 
 void setup () {
     Serial.begin(57600);
-    Serial.println("\n[aquarium_node 0.1]");
+    Serial.println("\n[AquariumNode 0.2]");
 
     rf12_initialize(RF12_SRC_ID, RF12_868MHZ, RF12_GRP_ID);
         
     pinMode(3, OUTPUT);
     TCCR2B = TCCR2B & 0b11111000 | 0x01; //We need 25kHz (32kHz also works fine)
     analogWrite(3, 200);   //Initially value for fan pwm
+    
+    //Get initial controler settings
+    int e_temp_sp = EEPROM.read(0x00);
+    int e_Kp = EEPROM.read(0x01);
+    int e_Ki = EEPROM.read(0x02);
+    int e_cs = EEPROM.read(0x03);
+     
+    if((e_temp_sp ^ e_Kp ^ e_Ki) == e_cs) {
+      Serial.println("Use settings from EEPROM");
+      temp_sp = e_temp_sp / 5.0;
+      Kp = e_Kp / 100.0;
+      Ki = e_Ki / 100.0;
+    }     
     
 #ifdef ANALOG_TEMP
     pinMode(7, INPUT);
@@ -59,10 +72,10 @@ float piControl() {
     float e = temp_sp - temp_pv;
   
     esum = esum + e;
-    if(esum > 5)
-      esum = 5;
-    if(esum < -25)
-      esum = -25;
+    if(esum > 100)
+      esum = 100;
+    if(esum < -100)
+      esum = -100;
          
     return Kp * e + Ki * Ta * esum;
 }
@@ -71,8 +84,19 @@ void recvSettings(){
     if(rf12_recvDone() && rf12_crc == 0) {       
        if(rf12_len == 3) {
          temp_sp = ((float)rf12_data[0]) / 5.0; 
-         Kp = (float)rf12_data[1];
-         Ki = (float)rf12_data[2];
+         Kp = (float)rf12_data[1] / 100.0;
+         Ki = (float)rf12_data[2] / 100.0;
+         
+         //Write controler settings to EEPROM
+         int e_temp_sp = (int)(temp_sp * 5);
+         int e_Kp = (int)(Kp * 100);
+         int e_Ki = (int)(Ki * 100);
+         
+         EEPROM.write(0x00, e_temp_sp);         
+         EEPROM.write(0x01, e_Kp);         
+         EEPROM.write(0x02, e_Ki);         
+         EEPROM.write(0x03, e_temp_sp ^ e_Kp ^ e_Ki);         
+         
 #ifdef DEBUG
          Serial.print("Tsp:");
          Serial.print(temp_sp);
@@ -93,7 +117,7 @@ void loop () {
     recvSettings();
     
     if(update.poll(Ta * 1000)) {      
-      rate = -piControl();
+      rate = -piControl() * 100;
       
       //Limit and set rate for fan
       if(rate < 65) 
