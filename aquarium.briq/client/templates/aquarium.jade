@@ -1,0 +1,16 @@
+.row
+  .twelve.columns
+    h1 Aquarium
+
+.row
+  .twelve.columns
+    h2 Current values
+      h3(style='color:{{txt_color}};') Water temp.: {{temp_pv}}°C
+      h3 Fan speed: {{fan_spd}}
+
+.row
+  .twelve.columns
+    h2 Settings
+      h3 Temperature set point (current: {{temp_sp}}°C)
+        //input(type='text',value='25')
+
