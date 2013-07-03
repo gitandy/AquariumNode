@@ -6,6 +6,7 @@ Created on 15.06.2013
 
 import csv
 import time
+import struct
 import threading
 
 class AquariumControler(threading.Thread):
@@ -60,13 +61,19 @@ class AquariumControler(threading.Thread):
                 data = self._cntrlr.recv_line()
                 
                 if data[1] == self._peer_id:
-                    print('Temp: %.1fC, Fan speed: %i' %(data[3]/5.0, data[4]))
-                
+                    dstr = ''
+                    for b in data[2:]:
+                        dstr += chr(b)
+
+                    temp_sp, temp_pv, fan_spd = struct.unpack('<BfH', dstr)
+                    
+                    print('Temp: %.1fC, Fan speed: %i' %(temp_pv, fan_spd))
+                 
                     if not self.csv_file == None:
                         self._csv_writer.writerow([data[0], 
-                                                   data[2]/5.0, 
-                                                   data[3]/5.0, 
-                                                   data[4]/10.0])
+                                                   temp_sp, 
+                                                   temp_pv, 
+                                                   fan_spd])
                         self._csv_file.flush()
                     
             time.sleep(.5)
@@ -93,7 +100,7 @@ if __name__ == '__main__':
     
     #Wait for JeeLink to get ready
     time.sleep(3)
-    ac.setControlerParams(26, 0.2, 0.1)
+    ac.setControlerParams(24, 0.2, 0.1)
     
     ac.capture('capture.csv')
    
