@@ -33,7 +33,7 @@ DallasTemperature sensors(&oneWire);
 
 void setup () {
     Serial.begin(57600);
-    Serial.println("\n[AquariumNode 0.2]");
+    Serial.println("\n[AquariumNode 0.3]");
 
     rf12_initialize(RF12_SRC_ID, RF12_868MHZ, RF12_GRP_ID);
         
@@ -117,11 +117,11 @@ void loop () {
     recvSettings();
     
     if(update.poll(Ta * 1000)) {      
-      rate = -piControl() * 100;
+      rate = -piControl() * 255;
       
       //Limit and set rate for fan
-      if(rate < 65) 
-        rate = 65;
+      if(rate < 75)
+        rate = 75;
       if(rate > 255)
         rate = 255;
 
@@ -142,7 +142,7 @@ void loop () {
 #endif              
     }
     
-    if(rf_upd.poll(5000)) {
+    if(rf_upd.poll(2000)) {
       uint8_t mess[3] = {(uint8_t)(temp_sp*5), 
                          (uint8_t)(temp_pv*5),
                          (uint8_t)(255 - (spd/100))};
