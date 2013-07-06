@@ -24,7 +24,8 @@ exports.factory = class
 
 packetListener = (packet, ainfo) ->
   if packet.id is 2 and packet.group is 1
-    temp_sp = packet.buffer[1]
-    temp_pv = packet.buffer[2]
-    fan_spd = packet.buffer[3]
+    buffer = new Buffer packet.buffer 
+    temp_sp = packet.buffer[1] / 5.0
+    temp_pv = buffer.readFloatLE 2
+    fan_spd = buffer.readUInt16LE 6
     ss.api.publish.all 'ss-aquarium', [temp_sp, temp_pv, fan_spd]
