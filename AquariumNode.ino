@@ -129,7 +129,7 @@ void loop () {
     recvSettings();
     
     if(update.poll(Ta * 1000)) {      
-      rate = -piControl() * 100;
+      rate = -piControl() * 255;
       
       //Limit and set rate for fan
       if(rate < 75) 
