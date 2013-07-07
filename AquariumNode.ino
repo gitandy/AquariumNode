@@ -23,7 +23,7 @@ MilliTimer update;
 MilliTimer rf_upd;
 float esum = 0.0;
 int rate = 0;
-unsigned int spd = 0;
+unsigned long spd = 0;
 
 #ifndef ANALOG_TEMP
 OneWire oneWire(ONE_WIRE_BUS);
@@ -71,11 +71,12 @@ void setup () {
 
 float piControl() {
 #ifdef ANALOG_TEMP
-    temp_pv = analogRead(A3) * 0.03;
+    float temp_pv_n = analogRead(A3) * 0.03;
 #else
     sensors.requestTemperatures();
-    temp_pv = sensors.getTempCByIndex(0);
+    float temp_pv_n = sensors.getTempCByIndex(0);
 #endif
+    temp_pv = (temp_pv + temp_pv_n) / 2;
 
     payload.temp_pv = temp_pv;
 
@@ -130,8 +131,8 @@ void loop () {
     
     if(update.poll(Ta * 1000)) {      
       rate = -piControl() * 255;
-      
-      //Limit and set rate for fan
+
+      //Limit fan rate to 30%-100% (fan spec.)
       if(rate < 75) 
         rate = 75;
       if(rate > 255)
@@ -139,8 +140,10 @@ void loop () {
 
       analogWrite(3, rate);
       
-      //Get fan speed
-      spd = pulseIn(7,HIGH);
+      //Get fan speed (low pulse has better reading)
+      unsigned long spd_r = pulseIn(7, LOW);
+      if(spd_r > 4000) //Only use possible readings (less than 4000 is more than 3000 RPM)
+        spd = (spd + spd_r) / 2;
       
       payload.fan_spd = (uint16_t)(12000000/spd);
 
@@ -153,7 +156,7 @@ void loop () {
       Serial.print(" F:");
       Serial.print(rate);
       Serial.print(" FS:");
-      Serial.println(spd);
+      Serial.println(payload.fan_spd);
 #endif              
     }
     
