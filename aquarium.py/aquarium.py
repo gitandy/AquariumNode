@@ -17,25 +17,31 @@ class AquariumControler(threading.Thread):
         
         self._peer_id = peer_id
                 
-    def setControlerParams(self, temp=25, gain_prop=1, gain_int=1):
+    def setControlerParams(self, temp=25, gain_prop=1, gain_int=1, min_fan_dc=0.3):
         if temp >= 0 and temp <= 50:
             self._temp_sp = temp
         else:
             raise Exception('Temperature out of range')
 
-        if gain_prop > 0 and gain_prop < 2.5:
+        if gain_prop > 0 and gain_prop < 1:
             self._gain_prop = gain_prop
         else:
             raise Exception('Proportional gain out of range')
         
-        if gain_int > 0 and gain_int < 2.5:
+        if gain_int > 0 and gain_int < 1:
             self._gain_int = gain_int
         else:
             raise Exception('Integral gain out of range')
+
+        if min_fan_dc > 0 and min_fan_dc < 1:
+            self._min_fan_dc = min_fan_dc
+        else:
+            raise Exception('Minimal fan duty cycle out of range')
         
         self._cntrlr.send(self._peer_id, [int(self._temp_sp*5), 
                         int(self._gain_prop*100), 
-                        int(self._gain_int*100)])
+                        int(self._gain_int*100),
+                        int(self._min_fan_dc*100)])
     
     def capture(self, csv_file=None):
         self.csv_file = csv_file
@@ -94,13 +100,13 @@ if __name__ == '__main__':
         cntrlr = jlrcontroler.JeeLinkRemoteControler('tcp://localhost:5556', 'tcp://localhost:5557')
     else:
         import jlcontroler
-        cntrlr = jlcontroler.JeeLinkControler('/dev/ttyUSB0', node_id=0x01, group_id=0x01)
+        cntrlr = jlcontroler.JeeLinkControler('/dev/ttyUSB1', node_id=0x01, group_id=0x01)
     
     ac = AquariumControler(cntrlr, 0x02)
     
     #Wait for JeeLink to get ready
     time.sleep(3)
-    ac.setControlerParams(24, 0.2, 0.1)
+    ac.setControlerParams(25, 0.2, 0.1, 0.2)
     
     ac.capture('capture.csv')
    

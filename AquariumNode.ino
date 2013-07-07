@@ -13,11 +13,12 @@
 #define RF12_GRP_ID 1
 #define RF12_SRC_ID 2
 
-float temp_pv = 25.0; //Temperature current (process) value
-float temp_sp = 25.0; //Temperature set point
-float Kp = 1;      //Proportinal gain
-float Ki = 1;      //Integral gain
-float Ta = 1;         //Intervall in seconds
+float temp_pv = 25.0;   //Temperature current (process) value
+float temp_sp = 25.0;   //Temperature set point
+float Kp = 1;           //Proportinal gain
+float Ki = 1;           //Integral gain
+float Ta = 1;           //Intervall in seconds
+float min_fan_dc = 0.3; //Minimum fan duty cycle
 
 MilliTimer update;
 MilliTimer rf_upd;
@@ -39,25 +40,27 @@ struct {
 
 void setup () {
     Serial.begin(57600);
-    Serial.println("\n[AquariumNode 0.3]");
+    Serial.println("\n[AquariumNode 0.4]");
 
     rf12_initialize(RF12_SRC_ID, RF12_868MHZ, RF12_GRP_ID);
         
     pinMode(3, OUTPUT);
     TCCR2B = TCCR2B & 0b11111000 | 0x01; //We need 25kHz (32kHz also works fine)
-    analogWrite(3, 200);   //Initially value for fan pwm
+    analogWrite(3, 200);   //Initial value for fan pwm
     
     //Get initial controler settings
     int e_temp_sp = EEPROM.read(0x00);
     int e_Kp = EEPROM.read(0x01);
     int e_Ki = EEPROM.read(0x02);
-    int e_cs = EEPROM.read(0x03);
+    int e_min_fan_dc = EEPROM.read(0x03);
+    int e_cs = EEPROM.read(0x04);
 
-    if((e_temp_sp ^ e_Kp ^ e_Ki) == e_cs) {
+    if((e_temp_sp ^ e_Kp ^ e_Ki ^ e_min_fan_dc) == e_cs) {
       Serial.println("Use settings from EEPROM");
       temp_sp = e_temp_sp / 5.0;
       Kp = e_Kp / 100.0;
       Ki = e_Ki / 100.0;
+      min_fan_dc = e_min_fan_dc / 100.0;
     }     
     
     payload.temp_sp = (uint8_t)(temp_sp * 5);
@@ -92,23 +95,21 @@ float piControl() {
 }
 
 void recvSettings(){
-    if(rf12_recvDone() && rf12_crc == 0) {       
-       if(rf12_len == 3) {
+    if(rf12_recvDone() && rf12_crc == 0) {
+       if(rf12_len == 4) {
          temp_sp = ((float)rf12_data[0]) / 5.0;
          payload.temp_sp = rf12_data[0];
          
          Kp = (float)rf12_data[1] / 100.0;
          Ki = (float)rf12_data[2] / 100.0;
+         min_fan_dc = (float)rf12_data[3] / 100.0;
          
-         //Write controler settings to EEPROM
-         int e_temp_sp = (int)(temp_sp * 5);
-         int e_Kp = (int)(Kp * 100);
-         int e_Ki = (int)(Ki * 100);
-         
-         EEPROM.write(0x00, e_temp_sp);         
-         EEPROM.write(0x01, e_Kp);         
-         EEPROM.write(0x02, e_Ki);         
-         EEPROM.write(0x03, e_temp_sp ^ e_Kp ^ e_Ki);         
+         //Write controler settings to EEPROM         
+         EEPROM.write(0x00, rf12_data[0]);         
+         EEPROM.write(0x01, rf12_data[1]);         
+         EEPROM.write(0x02, rf12_data[2]);         
+         EEPROM.write(0x03, rf12_data[3]);         
+         EEPROM.write(0x04, rf12_data[0] ^ rf12_data[1] ^ rf12_data[2] ^ rf12_data[3]);         
          
 #ifdef DEBUG
          Serial.print("Tsp:");
@@ -132,9 +133,9 @@ void loop () {
     if(update.poll(Ta * 1000)) {      
       rate = -piControl() * 255;
 
-      //Limit fan rate to 30%-100% (fan spec.)
-      if(rate < 75) 
-        rate = 75;
+      //Limit fan rate to minimal duty cycle
+      if(rate < 255 * min_fan_dc) 
+        rate = 255 * min_fan_dc;
       if(rate > 255)
         rate = 255;
 
@@ -146,7 +147,6 @@ void loop () {
         spd = (spd + spd_r) / 2;
       
       payload.fan_spd = (uint16_t)(12000000/spd);
-
       
 #ifdef DEBUG
       Serial.print("Tsp:");
@@ -160,7 +160,7 @@ void loop () {
 #endif              
     }
     
-    if(rf_upd.poll(2000)) {      
+    if(rf_upd.poll(5000)) {   //If you send too often recv fails :-( ?  
       rf12_sendNow(RF12_SRC_ID, &payload, sizeof payload);
     }
 }
