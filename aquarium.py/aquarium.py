@@ -71,7 +71,7 @@ class AquariumControler(threading.Thread):
                  
                     if not self.csv_file == None:
                         self._csv_writer.writerow([data[0], 
-                                                   temp_sp, 
+                                                   temp_sp/5.0, 
                                                    temp_pv, 
                                                    fan_spd])
                         self._csv_file.flush()
